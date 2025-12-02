@@ -8,8 +8,12 @@ pub fn main() !void {
     const part1Time = timer.lap() / std.time.ns_per_ms;
     const part2 = try solvePart2(fileContent);
     const part2Time = timer.lap() / std.time.ns_per_ms;
+    const part2Alt = try solvePart2Alt(fileContent);
+    std.debug.assert(part2 == part2Alt);
+    const part2AltTime = timer.lap() / std.time.ns_per_ms;
 
-    std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}ms\nTime2: {d}ms\n", .{ part1, part2, part1Time, part2Time });
+    std.debug.print("Part1: {d}\nPart2: {d}\nTime1\t\t: {d}ms\nTime2\t\t: {d}ms\n", .{ part1, part2, part1Time, part2Time });
+    std.debug.print("Time2 (Alt)\t: {d}ms\n", .{part2AltTime});
 }
 
 fn digits(number: usize) usize {
@@ -19,7 +23,7 @@ fn digits(number: usize) usize {
     return std.math.log10(number) + 1;
 }
 
-fn slice(number: usize, start: usize, end: usize, digitCount: usize) u64 {
+fn slice(number: usize, start: usize, end: usize, digitCount: usize) usize {
     // example: number = 101010, start = 0, end = 3, digitCount = 6
     // powLeft = 10^3 = 1000
     // powRight = 10^3 = 1000
@@ -40,7 +44,7 @@ fn isInvalid(number: usize) bool {
     return slice(number, 0, halfSize, digitCount) == slice(number, halfSize, digitCount, digitCount);
 }
 
-// use power of 10 to slice number into parts
+// use math to slice number into parts
 fn solvePart1(input: []const u8) !usize {
     var result: usize = 0;
     var sequences = std.mem.tokenizeScalar(u8, input, ',');
@@ -54,6 +58,46 @@ fn solvePart1(input: []const u8) !usize {
         for (firstNumber..secondNumber + 1) |toCheck| {
             if (isInvalid(toCheck)) {
                 result += toCheck;
+            }
+        }
+    }
+    return result;
+}
+
+// use math to slice number into parts (slower alternative)
+fn solvePart2Alt(input: []const u8) !usize {
+    var result: usize = 0;
+    var sequences = std.mem.tokenizeScalar(u8, input, ',');
+    while (sequences.next()) |sequence| {
+        var numbers = std.mem.tokenizeScalar(u8, sequence, '-');
+        const firstNumberString = numbers.next().?;
+        const secondNumberString = numbers.next().?;
+        const firstNumber = try std.fmt.parseInt(usize, firstNumberString, 10);
+        const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
+
+        for (firstNumber..secondNumber + 1) |toCheck| {
+            const digitCount = digits(toCheck);
+
+            // max length is 10 (only need to check half of the digits)
+            inline for (1..6) |digitLength| {
+                if (digitCount % digitLength == 0) {
+                    const digitsToCount = @divFloor(digitCount, digitLength);
+                    if (digitsToCount > 1) {
+                        const left = slice(toCheck, 0, digitLength, digitCount);
+                        var allOk = true;
+                        for (1..digitsToCount) |index| {
+                            const right = slice(toCheck, index * digitLength, (index + 1) * digitLength, digitCount);
+                            if (left != right) {
+                                allOk = false;
+                                break;
+                            }
+                        }
+                        if (allOk) {
+                            result += toCheck;
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -108,7 +152,9 @@ test "test-input" {
 
     const part1 = try solvePart1(fileContentTest);
     const part2 = try solvePart2(fileContentTest);
+    const part2Alt = try solvePart2Alt(fileContentTest);
 
     try std.testing.expectEqual(part1, 1227775554);
     try std.testing.expectEqual(part2, 4174379265);
+    try std.testing.expectEqual(part2, part2Alt);
 }
