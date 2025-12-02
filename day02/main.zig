@@ -12,6 +12,35 @@ pub fn main() !void {
     std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}ms\nTime2: {d}ms\n", .{ part1, part2, part1Time, part2Time });
 }
 
+fn digits(number: usize) usize {
+    // example: number = 1010
+    // log_10(1010) + 1
+    // 3 + 1 = 4
+    return std.math.log10(number) + 1;
+}
+
+fn slice(number: usize, start: usize, end: usize, digitCount: usize) u64 {
+    // example: number = 101010, start = 0, end = 3, digitCount = 6
+    // powLeft = 10^3 = 1000
+    // powRight = 10^3 = 1000
+    // 101010 / 1000 = 101 % 1000 = 101
+    const left = digitCount - end;
+    const right = end - start;
+    const powLeft = std.math.pow(usize, 10, left);
+    const powRight = std.math.pow(usize, 10, right);
+    return @mod(@divFloor(number, powLeft), powRight);
+}
+
+fn isInvalid(number: usize) bool {
+    const digitCount = digits(number);
+    if (digitCount % 2 != 0) {
+        return false;
+    }
+    const halfSize = @divFloor(digitCount, 2);
+    return slice(number, 0, halfSize, digitCount) == slice(number, halfSize, digitCount, digitCount);
+}
+
+// use power of 10 to slice number into parts
 fn solvePart1(input: []const u8) !usize {
     var result: usize = 0;
     var sequences = std.mem.tokenizeScalar(u8, input, ',');
@@ -23,18 +52,7 @@ fn solvePart1(input: []const u8) !usize {
         const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
 
         for (firstNumber..secondNumber + 1) |toCheck| {
-            var buf: [16]u8 = undefined;
-            const numberAsString = try std.fmt.bufPrint(buf[0..], "{d}", .{toCheck});
-
-            const numberLength = numberAsString.len;
-            if (numberLength % 2 != 0) {
-                continue;
-            }
-
-            const halfSize = numberLength / 2;
-            const leftSide = numberAsString[0..halfSize];
-            const rightSide = numberAsString[halfSize..];
-            if (std.mem.eql(u8, leftSide, rightSide)) {
+            if (isInvalid(toCheck)) {
                 result += toCheck;
             }
         }
@@ -42,6 +60,7 @@ fn solvePart1(input: []const u8) !usize {
     return result;
 }
 
+// use string representation to slice number into parts
 fn solvePart2(input: []const u8) !usize {
     var result: usize = 0;
     var sequences = std.mem.tokenizeScalar(u8, input, ',');
