@@ -18,13 +18,13 @@ pub fn main() !void {
 const Part = enum { Part1, Part2 };
 
 fn solve(comptime part: Part, input: []const u8, allocator: *std.mem.Allocator) !usize {
-    var result: usize = 0;
     const maxDigits: usize = switch (part) {
         .Part1 => 2,
         .Part2 => 12,
     };
-    var buf = try std.array_list.Managed(u8).initCapacity(allocator.*, maxDigits);
-    defer buf.deinit();
+    var result: usize = 0;
+    var buf = try std.ArrayList(u8).initCapacity(allocator.*, maxDigits);
+    defer buf.deinit(allocator.*);
     var lines = std.mem.tokenizeScalar(u8, input, '\n');
     while (lines.next()) |line| {
         const lineLength = line.len;
@@ -42,7 +42,7 @@ fn solve(comptime part: Part, input: []const u8, allocator: *std.mem.Allocator) 
                 }
             }
             currentIndex = largestIndex + 1;
-            try buf.append(line[currentIndex - 1]);
+            try buf.append(allocator.*, line[currentIndex - 1]);
         }
         result += try std.fmt.parseInt(usize, buf.items, 10);
         buf.clearRetainingCapacity();
