@@ -23,7 +23,7 @@ fn cmpPoint(context: void, a: Pair, b: Pair) bool {
     return (a[0] < b[0]);
 }
 
-fn distance(coordLeft: iPair, coordRight: iPair) usize {
+inline fn distance(coordLeft: iPair, coordRight: iPair) usize {
     const dx = coordLeft[0] - coordRight[0];
     const dy = coordLeft[1] - coordRight[1];
     const dz = coordLeft[2] - coordRight[2];
@@ -31,7 +31,7 @@ fn distance(coordLeft: iPair, coordRight: iPair) usize {
     return @intCast((dx * dx) + (dy * dy) + (dz * dz));
 }
 
-inline fn find(groups: []usize, x: usize) usize {
+fn find(groups: []usize, x: usize) usize {
     var innerX = x;
 
     while (groups[innerX] != innerX) {
@@ -55,10 +55,8 @@ fn mix(groups: []usize, x: usize, y: usize) void {
     groups[root_x] = root_y;
 }
 
-fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize) !usize {
-    var result: usize = 1;
+fn parseAndGetCoords(input: []const u8, allocator: *std.mem.Allocator) !std.ArrayList(iPair) {
     var coords = try std.ArrayList(iPair).initCapacity(allocator.*, 1000);
-    defer coords.deinit(allocator.*);
     var lines = std.mem.tokenizeScalar(u8, input, '\n');
     while (lines.next()) |line| {
         var rangeString = std.mem.tokenizeScalar(u8, line, ',');
@@ -72,11 +70,11 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize)
 
         coords.appendAssumeCapacity(iPair{ x, y, z });
     }
+    return coords;
+}
 
-    const coordCount = coords.items.len;
-
+fn getDistanceList(coords: std.ArrayList(iPair), allocator: *std.mem.Allocator) !std.ArrayList(Pair) {
     var distList = try std.ArrayList(Pair).initCapacity(allocator.*, 500_000);
-    defer distList.deinit(allocator.*);
 
     for (coords.items[0..], 0..) |left, xIndex| {
         for (coords.items[0..], 0..) |right, yIndex| {
@@ -89,30 +87,47 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize)
 
     std.mem.sortUnstable(Pair, distList.items[0..], {}, cmpPoint);
 
+    return distList;
+}
+
+fn getGroups(coordCount: usize, allocator: *std.mem.Allocator) ![]usize {
     var groups = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
     for (0..coordCount) |coordIndex| {
         groups.appendAssumeCapacity(coordIndex);
     }
-    defer groups.deinit(allocator.*);
+
+    return try groups.toOwnedSlice(allocator.*);
+}
+
+fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize) !usize {
+    var result: usize = 1;
+    var coords = try parseAndGetCoords(input, allocator);
+    defer coords.deinit(allocator.*);
+    var distList = try getDistanceList(coords, allocator);
+    defer distList.deinit(allocator.*);
+
+    const coordCount = coords.items.len;
+    const groups = try getGroups(coordCount, allocator);
+    defer allocator.free(groups);
 
     var groupCount = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
     for (0..coordCount) |_| {
         groupCount.appendAssumeCapacity(0);
     }
     defer groupCount.deinit(allocator.*);
+
     for (distList.items, 0..) |item, itemIndex| {
         if (itemIndex == testRuns) {
-            for (0..coordCount) |cIndex| {
-                groupCount.items[find(groups.items, cIndex)] += 1;
+            for (0..coordCount) |coordIndex| {
+                groupCount.items[find(groups, coordIndex)] += 1;
             }
             break;
         }
 
         const xItem = item[1];
         const yItem = item[2];
-        mix(groups.items, xItem, yItem);
+        mix(groups, xItem, yItem);
     }
-
     std.mem.sortUnstable(usize, groupCount.items, {}, std.sort.asc(usize));
 
     for (0..3) |_| {
@@ -124,60 +139,26 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize)
 
 fn solvePart2(input: []const u8, allocator: *std.mem.Allocator) !usize {
     var result: usize = 1;
-    var coords = try std.ArrayList(iPair).initCapacity(allocator.*, 1000);
+    var coords = try parseAndGetCoords(input, allocator);
     defer coords.deinit(allocator.*);
-    var lines = std.mem.tokenizeScalar(u8, input, '\n');
-    while (lines.next()) |line| {
-        var rangeString = std.mem.tokenizeScalar(u8, line, ',');
-        const xString = rangeString.next().?;
-        const yString = rangeString.next().?;
-        const zString = rangeString.next().?;
-
-        const x = try std.fmt.parseInt(isize, xString, 10);
-        const y = try std.fmt.parseInt(isize, yString, 10);
-        const z = try std.fmt.parseInt(isize, zString, 10);
-
-        coords.appendAssumeCapacity(iPair{ x, y, z });
-    }
-
-    const coordCount = coords.items.len;
-
-    var distList = try std.ArrayList(Pair).initCapacity(allocator.*, 500_000);
+    var distList = try getDistanceList(coords, allocator);
     defer distList.deinit(allocator.*);
 
-    for (coords.items[0..], 0..) |left, xIndex| {
-        for (coords.items[0..], 0..) |right, yIndex| {
-            if (xIndex > yIndex) {
-                const dist = distance(left, right);
-                distList.appendAssumeCapacity(Pair{ dist, xIndex, yIndex });
-            }
-        }
-    }
+    const coordCount = coords.items.len;
+    const groups = try getGroups(coordCount, allocator);
+    defer allocator.free(groups);
 
-    std.mem.sortUnstable(Pair, distList.items[0..], {}, cmpPoint);
-
-    var groups = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
-    for (0..coordCount) |coordIndex| {
-        groups.appendAssumeCapacity(coordIndex);
-    }
-    defer groups.deinit(allocator.*);
-
-    var groupCount = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
-    for (0..coordCount) |_| {
-        groupCount.appendAssumeCapacity(0);
-    }
-    defer groupCount.deinit(allocator.*);
     var connections: usize = 0;
     for (distList.items) |item| {
         const xItem = item[1];
         const yItem = item[2];
-        if (find(groups.items, xItem) != find(groups.items, yItem)) {
+        if (find(groups, xItem) != find(groups, yItem)) {
             connections += 1;
             if (connections == coordCount - 1) {
                 result = @intCast(coords.items[xItem][0] * coords.items[yItem][0]);
                 break;
             }
-            mix(groups.items, xItem, yItem);
+            mix(groups, xItem, yItem);
         }
     }
 
