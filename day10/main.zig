@@ -48,8 +48,8 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator) !usize {
             buttons.appendAssumeCapacity(buttonNumber);
         }
 
-        var current = std.AutoArrayHashMap(usize, void).init(allocator.*);
-        var next = std.AutoArrayHashMap(usize, void).init(allocator.*);
+        var current = std.AutoHashMap(usize, void).init(allocator.*);
+        var next = std.AutoHashMap(usize, void).init(allocator.*);
         defer {
             current.deinit();
             next.deinit();
@@ -63,10 +63,10 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator) !usize {
         while (!current.contains(end)) {
             next.clearRetainingCapacity();
 
-            outer: while (current.pop()) |curr| {
+            var iter = current.keyIterator();
+            outer: while (iter.next()) |curr| {
                 for (buttons.items) |button| {
-                    const c = curr.key;
-                    const pattern = c ^ button;
+                    const pattern = curr.* ^ button;
                     try next.put(pattern, {});
                     if (pattern == 0) {
                         break :outer;
