@@ -20,13 +20,20 @@ fn solve(comptime part: Part, input: []const u8) !usize {
     var lines = std.mem.tokenizeScalar(u8, input, '\n');
     var beams: [142]usize = std.mem.zeroes([142]usize);
 
-    const firstLine = lines.next().?;
-    const startPos = std.mem.indexOfScalar(u8, firstLine, 'S').?;
+    const firstLineOpt = lines.next();
+    std.debug.assert(firstLineOpt != null);
+    const firstLine = firstLineOpt.?;
+    const startPosOpt = std.mem.indexOfScalar(u8, firstLine, 'S');
+    std.debug.assert(startPosOpt != null);
+    const startPos = startPosOpt.?;
     beams[startPos] = 1;
 
     while (lines.next()) |line| {
+        std.debug.assert(line.len <= beams.len);
         for (0..line.len) |index| {
             if (line[index] == '^' and beams[index] > 0) {
+                std.debug.assert(index > 0);
+                std.debug.assert(index + 1 < beams.len);
                 splits += 1;
                 beams[index - 1] += beams[index];
                 beams[index + 1] += beams[index];

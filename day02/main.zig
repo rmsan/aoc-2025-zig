@@ -5,15 +5,15 @@ pub fn main() !void {
 
     var timer = try std.time.Timer.start();
     const part1 = try solvePart1(fileContent);
-    const part1Time = timer.lap() / std.time.ns_per_ms;
+    const part1Time = timer.lap() / std.time.ns_per_us;
     const part2 = try solvePart2(fileContent);
-    const part2Time = timer.lap() / std.time.ns_per_ms;
+    const part2Time = timer.lap() / std.time.ns_per_us;
     const part2Alt = try solvePart2Alt(fileContent);
     std.debug.assert(part2 == part2Alt);
-    const part2AltTime = timer.lap() / std.time.ns_per_ms;
+    const part2AltTime = timer.lap() / std.time.ns_per_us;
 
-    std.debug.print("Part1: {d}\nPart2: {d}\nTime1\t\t: {d}ms\nTime2\t\t: {d}ms\n", .{ part1, part2, part1Time, part2Time });
-    std.debug.print("Time2 (Alt)\t: {d}ms\n", .{part2AltTime});
+    std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}us\nTime2: {d}us\n", .{ part1, part2, part1Time, part2Time });
+    std.debug.print("Time2 (Alt): {d}us\n", .{part2AltTime});
 }
 
 fn digits(number: usize) usize {

@@ -3,13 +3,13 @@ const std = @import("std");
 pub fn main() !void {
     var arenaAllocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arenaAllocator.deinit();
-    var allocator = arenaAllocator.allocator();
+    const allocator = arenaAllocator.allocator();
     const fileContent = @embedFile("input.txt");
 
     var timer = try std.time.Timer.start();
-    const part1 = try solvePart1(fileContent, &allocator, 1000);
+    const part1 = try solvePart1(fileContent, allocator, 1000);
     const part1Time = timer.lap() / std.time.ns_per_ms;
-    const part2 = try solvePart2(fileContent, &allocator);
+    const part2 = try solvePart2(fileContent, allocator);
     const part2Time = timer.lap() / std.time.ns_per_ms;
 
     std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}ms\nTime2: {d}ms\n", .{ part1, part2, part1Time, part2Time });
@@ -40,7 +40,7 @@ fn find(groups: []usize, x: usize) usize {
     const root = innerX;
 
     innerX = x;
-    while (groups[x] != innerX) {
+    while (groups[innerX] != root) {
         const parent = groups[innerX];
         groups[innerX] = root;
         innerX = parent;
@@ -55,14 +55,18 @@ fn mix(groups: []usize, x: usize, y: usize) void {
     groups[root_x] = root_y;
 }
 
-fn parseAndGetCoords(input: []const u8, allocator: *std.mem.Allocator) !std.ArrayList(iPair) {
-    var coords = try std.ArrayList(iPair).initCapacity(allocator.*, 1000);
+fn parseAndGetCoords(input: []const u8, allocator: std.mem.Allocator) !std.ArrayList(iPair) {
+    var coords = try std.ArrayList(iPair).initCapacity(allocator, 1000);
     var lines = std.mem.tokenizeScalar(u8, input, '\n');
     while (lines.next()) |line| {
         var rangeString = std.mem.tokenizeScalar(u8, line, ',');
-        const xString = rangeString.next().?;
-        const yString = rangeString.next().?;
-        const zString = rangeString.next().?;
+        const xStringOpt = rangeString.next();
+        const yStringOpt = rangeString.next();
+        const zStringOpt = rangeString.next();
+        std.debug.assert(xStringOpt != null and yStringOpt != null and zStringOpt != null);
+        const xString = xStringOpt.?;
+        const yString = yStringOpt.?;
+        const zString = zStringOpt.?;
 
         const x = try std.fmt.parseInt(isize, xString, 10);
         const y = try std.fmt.parseInt(isize, yString, 10);
@@ -73,8 +77,9 @@ fn parseAndGetCoords(input: []const u8, allocator: *std.mem.Allocator) !std.Arra
     return coords;
 }
 
-fn getDistanceList(coords: std.ArrayList(iPair), allocator: *std.mem.Allocator) !std.ArrayList(Pair) {
-    var distList = try std.ArrayList(Pair).initCapacity(allocator.*, 500_000);
+fn getDistanceList(coords: std.ArrayList(iPair), allocator: std.mem.Allocator) !std.ArrayList(Pair) {
+    const n = coords.items.len;
+    var distList = try std.ArrayList(Pair).initCapacity(allocator, (n * (n - 1)) / 2);
 
     for (coords.items[0..], 0..) |left, xIndex| {
         for (coords.items[0..], 0..) |right, yIndex| {
@@ -90,31 +95,31 @@ fn getDistanceList(coords: std.ArrayList(iPair), allocator: *std.mem.Allocator) 
     return distList;
 }
 
-fn getGroups(coordCount: usize, allocator: *std.mem.Allocator) ![]usize {
-    var groups = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
+fn getGroups(coordCount: usize, allocator: std.mem.Allocator) ![]usize {
+    var groups = try std.ArrayList(usize).initCapacity(allocator, coordCount);
     for (0..coordCount) |coordIndex| {
         groups.appendAssumeCapacity(coordIndex);
     }
 
-    return try groups.toOwnedSlice(allocator.*);
+    return try groups.toOwnedSlice(allocator);
 }
 
-fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize) !usize {
+fn solvePart1(input: []const u8, allocator: std.mem.Allocator, testRuns: usize) !usize {
     var result: usize = 1;
     var coords = try parseAndGetCoords(input, allocator);
-    defer coords.deinit(allocator.*);
+    defer coords.deinit(allocator);
     var distList = try getDistanceList(coords, allocator);
-    defer distList.deinit(allocator.*);
+    defer distList.deinit(allocator);
 
     const coordCount = coords.items.len;
     const groups = try getGroups(coordCount, allocator);
     defer allocator.free(groups);
 
-    var groupCount = try std.ArrayList(usize).initCapacity(allocator.*, coordCount);
+    var groupCount = try std.ArrayList(usize).initCapacity(allocator, coordCount);
     for (0..coordCount) |_| {
         groupCount.appendAssumeCapacity(0);
     }
-    defer groupCount.deinit(allocator.*);
+    defer groupCount.deinit(allocator);
 
     for (distList.items, 0..) |item, itemIndex| {
         if (itemIndex == testRuns) {
@@ -126,6 +131,7 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize)
 
         const xItem = item[1];
         const yItem = item[2];
+        std.debug.assert(xItem < coordCount and yItem < coordCount);
         mix(groups, xItem, yItem);
     }
     std.mem.sortUnstable(usize, groupCount.items, {}, std.sort.asc(usize));
@@ -137,12 +143,12 @@ fn solvePart1(input: []const u8, allocator: *std.mem.Allocator, testRuns: usize)
     return result;
 }
 
-fn solvePart2(input: []const u8, allocator: *std.mem.Allocator) !usize {
+fn solvePart2(input: []const u8, allocator: std.mem.Allocator) !usize {
     var result: usize = 1;
     var coords = try parseAndGetCoords(input, allocator);
-    defer coords.deinit(allocator.*);
+    defer coords.deinit(allocator);
     var distList = try getDistanceList(coords, allocator);
-    defer distList.deinit(allocator.*);
+    defer distList.deinit(allocator);
 
     const coordCount = coords.items.len;
     const groups = try getGroups(coordCount, allocator);
@@ -152,6 +158,7 @@ fn solvePart2(input: []const u8, allocator: *std.mem.Allocator) !usize {
     for (distList.items) |item| {
         const xItem = item[1];
         const yItem = item[2];
+        std.debug.assert(xItem < coordCount and yItem < coordCount);
         if (find(groups, xItem) != find(groups, yItem)) {
             connections += 1;
             if (connections == coordCount - 1) {
@@ -166,11 +173,11 @@ fn solvePart2(input: []const u8, allocator: *std.mem.Allocator) !usize {
 }
 
 test "test-input" {
-    var allocator = std.testing.allocator;
+    const allocator = std.testing.allocator;
     const fileContentTest = @embedFile("test.txt");
 
-    const part1 = try solvePart1(fileContentTest, &allocator, 10);
-    const part2 = try solvePart2(fileContentTest, &allocator);
+    const part1 = try solvePart1(fileContentTest, allocator, 10);
+    const part2 = try solvePart2(fileContentTest, allocator);
 
     try std.testing.expectEqual(part1, 40);
     try std.testing.expectEqual(part2, 25272);
