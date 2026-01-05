@@ -1,11 +1,17 @@
 const std = @import("std");
 
 pub fn main() !void {
+    var arenaAllocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arenaAllocator.deinit();
+    const allocator = arenaAllocator.allocator();
     const fileContent = @embedFile("input.txt");
 
     var timer = try std.time.Timer.start();
     const part1 = try solvePart1(fileContent);
     const part1Time = timer.lap() / std.time.ns_per_us;
+    const part1Threaded = try solvePart1Threaded(fileContent, allocator);
+    std.debug.assert(part1 == part1Threaded);
+    const part1ThreadedTime = timer.lap() / std.time.ns_per_us;
     const part2 = try solvePart2(fileContent);
     const part2Time = timer.lap() / std.time.ns_per_us;
     const part2Alt = try solvePart2Alt(fileContent);
@@ -13,6 +19,7 @@ pub fn main() !void {
     const part2AltTime = timer.lap() / std.time.ns_per_us;
 
     std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}us\nTime2: {d}us\n", .{ part1, part2, part1Time, part2Time });
+    std.debug.print("Time1 (Threaded): {d}us\n", .{part1ThreadedTime});
     std.debug.print("Time2 (Alt): {d}us\n", .{part2AltTime});
 }
 
@@ -62,6 +69,90 @@ fn solvePart1(input: []const u8) !usize {
         }
     }
     return result;
+}
+
+fn solvePart1Threaded(input: []const u8, allocator: std.mem.Allocator) !usize {
+    const Range = struct { start: usize, end: usize };
+
+    var ranges_list = try std.ArrayList(Range).initCapacity(allocator, 37);
+    defer ranges_list.deinit(allocator);
+
+    var sequences = std.mem.tokenizeScalar(u8, input, ',');
+    while (sequences.next()) |sequence| {
+        var numbers = std.mem.tokenizeScalar(u8, sequence, '-');
+        const firstNumberString = numbers.next().?;
+        const secondNumberString = numbers.next().?;
+        const firstNumber = try std.fmt.parseInt(usize, firstNumberString, 10);
+        const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
+        ranges_list.appendAssumeCapacity(.{ .start = firstNumber, .end = secondNumber });
+    }
+
+    const ranges = ranges_list.items;
+    const n_threads = @min(try std.Thread.getCpuCount(), ranges.len);
+
+    const Queue = struct {
+        mutex: std.Thread.Mutex = .{},
+        next_idx: usize = 0,
+        ranges: []const Range,
+
+        fn next(self: *@This()) ?Range {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            if (self.next_idx >= self.ranges.len) {
+                @branchHint(.cold);
+                return null;
+            }
+            const idx = self.next_idx;
+            self.next_idx += 1;
+            return self.ranges[idx];
+        }
+    };
+
+    var queue = Queue{ .ranges = ranges };
+
+    var results = try allocator.alloc(usize, ranges.len);
+    @memset(results, 0);
+    defer allocator.free(results);
+
+    var threads = try allocator.alloc(std.Thread, n_threads);
+    defer allocator.free(threads);
+
+    const worker = struct {
+        fn run(q: *Queue, out: *usize) void {
+            var local_total: usize = 0;
+            while (true) {
+                const maybe = q.next();
+                if (maybe == null) {
+                    @branchHint(.cold);
+                    break;
+                }
+                const r = maybe.?;
+                for (r.start..r.end + 1) |toCheck| {
+                    if (isInvalid(toCheck)) {
+                        local_total += toCheck;
+                    }
+                }
+            }
+            out.* = local_total;
+        }
+    };
+
+    var i: usize = 0;
+    while (i < n_threads) : (i += 1) {
+        threads[i] = try std.Thread.spawn(.{}, worker.run, .{ &queue, &results[i] });
+    }
+
+    i = 0;
+    while (i < n_threads) : (i += 1) {
+        threads[i].join();
+    }
+
+    var final_total: usize = 0;
+    for (results) |r| {
+        final_total += r;
+    }
+
+    return final_total;
 }
 
 // use math to slice number into parts (slower alternative)
@@ -148,13 +239,16 @@ fn solvePart2(input: []const u8) !usize {
 }
 
 test "test-input" {
+    const allocator = std.testing.allocator;
     const fileContentTest = @embedFile("test.txt");
 
     const part1 = try solvePart1(fileContentTest);
+    const part1Alt = try solvePart1Threaded(fileContentTest, allocator);
     const part2 = try solvePart2(fileContentTest);
     const part2Alt = try solvePart2Alt(fileContentTest);
 
     try std.testing.expectEqual(part1, 1227775554);
+    try std.testing.expectEqual(part1Alt, part1);
     try std.testing.expectEqual(part2, 4174379265);
     try std.testing.expectEqual(part2, part2Alt);
 }
