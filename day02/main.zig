@@ -14,14 +14,34 @@ pub fn main() !void {
     const part1ThreadedTime = timer.lap() / std.time.ns_per_us;
     const part2 = try solvePart2(fileContent);
     const part2Time = timer.lap() / std.time.ns_per_us;
-    const part2Alt = try solvePart2Alt(fileContent);
-    std.debug.assert(part2 == part2Alt);
-    const part2AltTime = timer.lap() / std.time.ns_per_us;
+    const part2Threaded = try solvePart2Threaded(fileContent, allocator);
+    std.debug.assert(part2 == part2Threaded);
+    const part2ThreadedTime = timer.lap() / std.time.ns_per_us;
 
     std.debug.print("Part1: {d}\nPart2: {d}\nTime1: {d}us\nTime2: {d}us\n", .{ part1, part2, part1Time, part2Time });
     std.debug.print("Time1 (Threaded): {d}us\n", .{part1ThreadedTime});
-    std.debug.print("Time2 (Alt): {d}us\n", .{part2AltTime});
+    std.debug.print("Time2 (Threaded): {d}us\n", .{part2ThreadedTime});
 }
+
+const Range = struct { start: usize, end: usize };
+
+const Queue = struct {
+    mutex: std.Thread.Mutex = .{},
+    next_idx: usize = 0,
+    ranges: []const Range,
+
+    fn next(self: *@This()) ?Range {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.next_idx >= self.ranges.len) {
+            @branchHint(.cold);
+            return null;
+        }
+        const idx = self.next_idx;
+        self.next_idx += 1;
+        return self.ranges[idx];
+    }
+};
 
 fn digits(number: usize) usize {
     // example: number = 1010
@@ -51,6 +71,50 @@ fn isInvalid(number: usize) bool {
     return slice(number, 0, halfSize, digitCount) == slice(number, halfSize, digitCount, digitCount);
 }
 
+fn solveThreaded(input: []const u8, allocator: std.mem.Allocator, comptime worker: type) !usize {
+    var ranges_list = try std.ArrayList(Range).initCapacity(allocator, 37);
+    defer ranges_list.deinit(allocator);
+
+    var sequences = std.mem.tokenizeScalar(u8, input, ',');
+    while (sequences.next()) |sequence| {
+        var numbers = std.mem.tokenizeScalar(u8, sequence, '-');
+        const firstNumberString = numbers.next().?;
+        const secondNumberString = numbers.next().?;
+        const firstNumber = try std.fmt.parseInt(usize, firstNumberString, 10);
+        const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
+        ranges_list.appendAssumeCapacity(.{ .start = firstNumber, .end = secondNumber });
+    }
+
+    const ranges = ranges_list.items;
+    const n_threads = @min(try std.Thread.getCpuCount(), ranges.len);
+
+    var queue = Queue{ .ranges = ranges };
+
+    var results = try allocator.alloc(usize, n_threads);
+    @memset(results, 0);
+    defer allocator.free(results);
+
+    var threads = try allocator.alloc(std.Thread, n_threads);
+    defer allocator.free(threads);
+
+    var i: usize = 0;
+    while (i < n_threads) : (i += 1) {
+        threads[i] = try std.Thread.spawn(.{}, worker.run, .{ &queue, &results[i] });
+    }
+
+    i = 0;
+    while (i < n_threads) : (i += 1) {
+        threads[i].join();
+    }
+
+    var final_total: usize = 0;
+    for (results) |r| {
+        final_total += r;
+    }
+
+    return final_total;
+}
+
 // use math to slice number into parts
 fn solvePart1(input: []const u8) !usize {
     var result: usize = 0;
@@ -72,51 +136,6 @@ fn solvePart1(input: []const u8) !usize {
 }
 
 fn solvePart1Threaded(input: []const u8, allocator: std.mem.Allocator) !usize {
-    const Range = struct { start: usize, end: usize };
-
-    var ranges_list = try std.ArrayList(Range).initCapacity(allocator, 37);
-    defer ranges_list.deinit(allocator);
-
-    var sequences = std.mem.tokenizeScalar(u8, input, ',');
-    while (sequences.next()) |sequence| {
-        var numbers = std.mem.tokenizeScalar(u8, sequence, '-');
-        const firstNumberString = numbers.next().?;
-        const secondNumberString = numbers.next().?;
-        const firstNumber = try std.fmt.parseInt(usize, firstNumberString, 10);
-        const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
-        ranges_list.appendAssumeCapacity(.{ .start = firstNumber, .end = secondNumber });
-    }
-
-    const ranges = ranges_list.items;
-    const n_threads = @min(try std.Thread.getCpuCount(), ranges.len);
-
-    const Queue = struct {
-        mutex: std.Thread.Mutex = .{},
-        next_idx: usize = 0,
-        ranges: []const Range,
-
-        fn next(self: *@This()) ?Range {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            if (self.next_idx >= self.ranges.len) {
-                @branchHint(.cold);
-                return null;
-            }
-            const idx = self.next_idx;
-            self.next_idx += 1;
-            return self.ranges[idx];
-        }
-    };
-
-    var queue = Queue{ .ranges = ranges };
-
-    var results = try allocator.alloc(usize, ranges.len);
-    @memset(results, 0);
-    defer allocator.free(results);
-
-    var threads = try allocator.alloc(std.Thread, n_threads);
-    defer allocator.free(threads);
-
     const worker = struct {
         fn run(q: *Queue, out: *usize) void {
             var local_total: usize = 0;
@@ -137,62 +156,7 @@ fn solvePart1Threaded(input: []const u8, allocator: std.mem.Allocator) !usize {
         }
     };
 
-    var i: usize = 0;
-    while (i < n_threads) : (i += 1) {
-        threads[i] = try std.Thread.spawn(.{}, worker.run, .{ &queue, &results[i] });
-    }
-
-    i = 0;
-    while (i < n_threads) : (i += 1) {
-        threads[i].join();
-    }
-
-    var final_total: usize = 0;
-    for (results) |r| {
-        final_total += r;
-    }
-
-    return final_total;
-}
-
-// use math to slice number into parts (slower alternative)
-fn solvePart2Alt(input: []const u8) !usize {
-    var result: usize = 0;
-    var sequences = std.mem.tokenizeScalar(u8, input, ',');
-    while (sequences.next()) |sequence| {
-        var numbers = std.mem.tokenizeScalar(u8, sequence, '-');
-        const firstNumberString = numbers.next().?;
-        const secondNumberString = numbers.next().?;
-        const firstNumber = try std.fmt.parseInt(usize, firstNumberString, 10);
-        const secondNumber = try std.fmt.parseInt(usize, secondNumberString, 10);
-
-        for (firstNumber..secondNumber + 1) |toCheck| {
-            const digitCount = digits(toCheck);
-
-            // max length is 10 (only need to check half of the digits)
-            inline for (1..6) |digitLength| {
-                if (digitCount % digitLength == 0) {
-                    const digitsToCount = @divFloor(digitCount, digitLength);
-                    if (digitsToCount > 1) {
-                        const left = slice(toCheck, 0, digitLength, digitCount);
-                        var allOk = true;
-                        for (1..digitsToCount) |index| {
-                            const right = slice(toCheck, index * digitLength, (index + 1) * digitLength, digitCount);
-                            if (left != right) {
-                                allOk = false;
-                                break;
-                            }
-                        }
-                        if (allOk) {
-                            result += toCheck;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return result;
+    return solveThreaded(input, allocator, worker);
 }
 
 // use string representation to slice number into parts
@@ -238,6 +202,50 @@ fn solvePart2(input: []const u8) !usize {
     return result;
 }
 
+fn solvePart2Threaded(input: []const u8, allocator: std.mem.Allocator) !usize {
+    const worker = struct {
+        fn run(q: *Queue, out: *usize) void {
+            var local_total: usize = 0;
+            while (true) {
+                const maybe = q.next();
+                if (maybe == null) {
+                    @branchHint(.cold);
+                    break;
+                }
+                const r = maybe.?;
+                for (r.start..r.end + 1) |toCheck| {
+                    var buf: [16]u8 = undefined;
+                    const numberAsString = std.fmt.bufPrint(buf[0..], "{d}", .{toCheck}) catch unreachable;
+
+                    const numberLength = numberAsString.len;
+                    const halfSize = numberLength / 2;
+                    var blockLength: usize = 1;
+                    while (blockLength <= halfSize) : (blockLength += 1) {
+                        if (numberLength % blockLength != 0) continue;
+                        var allOk = true;
+                        const numberToCheck = numberAsString[0..blockLength];
+                        var blockLengthCurr: usize = blockLength;
+                        while (blockLengthCurr < numberLength) : (blockLengthCurr += blockLength) {
+                            const otherNumber = numberAsString[blockLengthCurr .. blockLengthCurr + blockLength];
+                            if (!std.mem.eql(u8, numberToCheck, otherNumber)) {
+                                allOk = false;
+                                break;
+                            }
+                        }
+                        if (allOk) {
+                            local_total += toCheck;
+                            break;
+                        }
+                    }
+                }
+            }
+            out.* = local_total;
+        }
+    };
+
+    return solveThreaded(input, allocator, worker);
+}
+
 test "test-input" {
     const allocator = std.testing.allocator;
     const fileContentTest = @embedFile("test.txt");
@@ -245,10 +253,10 @@ test "test-input" {
     const part1 = try solvePart1(fileContentTest);
     const part1Alt = try solvePart1Threaded(fileContentTest, allocator);
     const part2 = try solvePart2(fileContentTest);
-    const part2Alt = try solvePart2Alt(fileContentTest);
+    const part2Threaded = try solvePart2Threaded(fileContentTest, allocator);
 
     try std.testing.expectEqual(part1, 1227775554);
     try std.testing.expectEqual(part1Alt, part1);
     try std.testing.expectEqual(part2, 4174379265);
-    try std.testing.expectEqual(part2, part2Alt);
+    try std.testing.expectEqual(part2Threaded, part2);
 }
