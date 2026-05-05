@@ -1,9 +1,10 @@
 const std = @import("std");
+const Timer = @import("timer").Timer;
 
 pub fn main() !void {
     const fileContent = @embedFile("input.txt");
 
-    var timer = try std.time.Timer.start();
+    var timer = try Timer.start();
     const part1 = try solvePart1(fileContent);
     const part1Time = timer.lap() / std.time.ns_per_us;
     const part2 = try solvePart2(fileContent);

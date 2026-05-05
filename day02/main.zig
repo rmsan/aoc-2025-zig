@@ -1,4 +1,5 @@
 const std = @import("std");
+const Timer = @import("timer").Timer;
 
 pub fn main() !void {
     var arenaAllocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -6,7 +7,7 @@ pub fn main() !void {
     const allocator = arenaAllocator.allocator();
     const fileContent = @embedFile("input.txt");
 
-    var timer = try std.time.Timer.start();
+    var timer = try Timer.start();
     const part1 = try solvePart1(fileContent);
     const part1Time = timer.lap() / std.time.ns_per_us;
     const part1Threaded = try solvePart1Threaded(fileContent, allocator);
@@ -26,12 +27,12 @@ pub fn main() !void {
 const Range = struct { start: usize, end: usize };
 
 const Queue = struct {
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.atomic.Mutex = .unlocked,
     next_idx: usize = 0,
     ranges: []const Range,
 
     fn next(self: *@This()) ?Range {
-        self.mutex.lock();
+        while (!self.mutex.tryLock()) {}
         defer self.mutex.unlock();
         if (self.next_idx >= self.ranges.len) {
             @branchHint(.cold);

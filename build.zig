@@ -8,7 +8,10 @@ pub fn setup_day(
 ) void {
     const path = b.fmt("day{:0>2}", .{day});
     const root_src = b.fmt("{s}/main.zig", .{path});
-    const exe = b.addExecutable(.{ .name = path, .root_module = b.createModule(.{ .root_source_file = b.path(root_src), .target = target, .optimize = mode }) });
+    const timer_module = b.createModule(.{ .root_source_file = b.path("timer.zig"), .target = target, .optimize = mode });
+    const root_module = b.createModule(.{ .root_source_file = b.path(root_src), .target = target, .optimize = mode });
+    root_module.addImport("timer", timer_module);
+    const exe = b.addExecutable(.{ .name = path, .root_module = root_module });
 
     const install_cmd = b.addInstallArtifact(exe, .{});
     const install_step = b.step(path, "Build specified day");

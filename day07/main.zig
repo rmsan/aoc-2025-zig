@@ -1,4 +1,5 @@
 const std = @import("std");
+const Timer = @import("timer").Timer;
 
 const builtin = @import("builtin");
 
@@ -18,7 +19,7 @@ const vec_len = @typeInfo(Vec).vector.len;
 pub fn main() !void {
     const fileContent = @embedFile("input.txt");
 
-    var timer = try std.time.Timer.start();
+    var timer = try Timer.start();
     const part1 = try solvePart1(fileContent);
     const part1Time = timer.lap() / std.time.ns_per_us;
     const part1Vec = try solveVec(Part.Part1, fileContent);
@@ -77,7 +78,7 @@ fn solve(comptime part: Part, input: []const u8) !usize {
 fn solveVec(comptime part: Part, input: []const u8) !usize {
     var splits: usize = 0;
     var lines = std.mem.tokenizeScalar(u8, input, '\n');
-    var beams: @Vector(142, usize) = @splat(0);
+    var beams: [142]usize = std.mem.zeroes([142]usize);
 
     const firstLineOpt = lines.next();
     std.debug.assert(firstLineOpt != null);
@@ -133,7 +134,10 @@ fn solveVec(comptime part: Part, input: []const u8) !usize {
         return splits;
     }
 
-    const beamsSum = @reduce(.Add, beams);
+    var beamsSum: usize = 0;
+    for (beams) |beam| {
+        beamsSum += beam;
+    }
 
     return beamsSum;
 }
