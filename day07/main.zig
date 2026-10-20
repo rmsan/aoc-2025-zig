@@ -96,7 +96,7 @@ fn solveVec(comptime part: Part, input: []const u8) !usize {
         while (i + vec_len <= line.len) {
             const chunk: Vec = line[i..][0..vec_len].*;
             const is_caret = chunk == caret;
-            const mask = @as(std.meta.Int(.unsigned, vec_len), @bitCast(is_caret));
+            const mask = @as(@Int(.unsigned, vec_len), @bitCast(is_caret));
             if (mask != 0) {
                 var bit_pos: usize = 0;
                 var remaining = mask;

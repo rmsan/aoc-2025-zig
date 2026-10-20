@@ -19,9 +19,7 @@ pub fn setup_day(
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(&install_cmd.step);
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step(b.fmt("run_{s}", .{path}), "Run specified day");
     run_step.dependOn(&run_cmd.step);
